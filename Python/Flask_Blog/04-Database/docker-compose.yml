@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  flaskblog:
+    build: .
+    container_name: flaskblog_ci_web
+    volumes:
+      - ./:/app
+    ports:
+      - "5000:5000"
