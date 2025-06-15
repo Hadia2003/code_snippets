@@ -1,0 +1,18 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
+      }
+    }
+    stage('Build & Deploy') {
+      steps {
+        dir('Python/Flask_Blog/04-Database') {
+          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build'
+        }
+      }
+    }
+  }
+}
