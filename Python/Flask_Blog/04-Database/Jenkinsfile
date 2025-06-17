@@ -1,22 +1,44 @@
 pipeline {
   agent any
 
+  environment {
+    // point to your Flask app
+    BASE_URL = "http://18.206.147.230:5000"
+  }
+
   stages {
     stage('Checkout') {
       steps {
-        // Clone the repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
+
     stage('Build & Deploy') {
       steps {
-        // Navigate into the Flask blog directory
         dir('Python/Flask_Blog/04-Database') {
-          // Tear down any existing containers & volumes, then rebuild from scratch
-          sh '''
-            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-          '''
+          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build'
+        }
+      }
+    }
+
+    stage('Wait for Service') {
+      steps {
+        script {
+          // retry up to 10 times, waiting 5s between, until /home responds 200
+          retry(10) {
+            sh "curl --fail --silent ${BASE_URL}/home"
+            sleep 5
+          }
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        echo "🔬 Running Selenium tests against ${BASE_URL}"
+        // adjust the dir if your Maven project lives elsewhere
+        dir('selenium-demo') {
+          sh "mvn clean test -DbaseUrl=${BASE_URL}"
         }
       }
     }
@@ -24,11 +46,10 @@ pipeline {
 
   post {
     always {
-      // Print out the status of the running containers for debugging
+      // tear down your containers so next build starts fresh
       dir('Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml down'
       }
     }
   }
 }
-
