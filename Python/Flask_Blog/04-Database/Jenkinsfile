@@ -4,15 +4,31 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        // Clone the repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
     stage('Build & Deploy') {
       steps {
+        // Navigate into the Flask blog directory
         dir('Python/Flask_Blog/04-Database') {
-          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build'
+          // Tear down any existing containers & volumes, then rebuild from scratch
+          sh '''
+            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
+          '''
         }
       }
     }
   }
+
+  post {
+    always {
+      // Print out the status of the running containers for debugging
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      }
+    }
+  }
 }
+
