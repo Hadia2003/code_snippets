@@ -1,115 +1,34 @@
+
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        // --- UPDATE THESE ---
-        APP_REPO      = 'https://github.com/Hadia2003/code_snippets.git'
-        APP_BRANCH    = 'master'
-        TEST_REPO     = 'https://github.com/Hadia2003/selenium_testcases.git'
-        TEST_BRANCH   = 'main'
-        COMPOSE_FILE  = 'docker-compose.yml'
-        PROJECT_NAME  = 'flaskblog_ci'
-        PYTHON_IMAGE  = 'python:3.9-slim'
-        // --------------------
+  stages {
+    stage('Checkout') {
+      steps {
+        // Clone the repo
+        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
+      }
     }
-
-    stages {
-        stage('Checkout Application') {
-            steps {
-                git branch: "${APP_BRANCH}", url: "${APP_REPO}"
-            }
+    stage('Build & Deploy') {
+      steps {
+        // Navigate into the Flask blog directory
+        dir('Python/Flask_Blog/04-Database') {
+          // Tear down any existing containers & volumes, then rebuild from scratch
+          sh '''
+            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
+          '''
         }
-
-        stage('Clean Existing Containers') {
-            steps {
-                // tear down any old compose stack
-                sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down --remove-orphans"
-                // force-remove stray containers by name
-                sh """
-                  docker rm -f ${PROJECT_NAME}_web || true
-                  docker rm -f ${PROJECT_NAME}_db  || true
-                """
-            }
-        }
-
-        stage('Build & Deploy') {
-            steps {
-                sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} up -d --build"
-            }
-        }
-
-        stage('Wait for Flask to Start') {
-            steps {
-                echo 'Waiting 60 seconds for the Flask app to become healthy…'
-                sh 'sleep 60'
-            }
-        }
-
-        stage('Checkout Selenium Tests') {
-            steps {
-                dir('selenium-tests') {
-                    git branch: "${TEST_BRANCH}", url: "${TEST_REPO}"
-                }
-            }
-        }
-
-        stage('Run Selenium Tests') {
-            steps {
-                script {
-                    docker.image("${PYTHON_IMAGE}")
-                          .inside('--network host --shm-size=2g') {
-                              // install test dependencies
-                              sh 'pip install -r requirements.txt'
-                              // ensure report dir exists then run pytest
-                              sh 'mkdir -p reports && pytest --junitxml=reports/results.xml'
-                          }
-                }
-            }
-        }
+      }
     }
+  }
 
-    post {
-        always {
-            // publish test results (even if none found)
-            junit testResults: 'selenium-tests/reports/*.xml', allowEmptyResults: true
-            // tear down the compose stack
-            sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down"
-        }
+  post {
+    always {
+      // Print out the status of the running containers for debugging
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      }
     }
+  }
 }
-
-
-
-// pipeline {
-//   agent any
-
-//   stages {
-//     stage('Checkout') {
-//       steps {
-//         // Clone the repo
-//         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-//       }
-//     }
-//     stage('Build & Deploy') {
-//       steps {
-//         // Navigate into the Flask blog directory
-//         dir('Python/Flask_Blog/04-Database') {
-//           // Tear down any existing containers & volumes, then rebuild from scratch
-//           sh '''
-//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-//             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-//           '''
-//         }
-//       }
-//     }
-//   }
-
-//   post {
-//     always {
-//       // Print out the status of the running containers for debugging
-//       dir('Python/Flask_Blog/04-Database') {
-//         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-//       }
-//     }
-//   }
-// }
