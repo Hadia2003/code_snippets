@@ -1,22 +1,29 @@
+  post {
+    always {
+      // dump container status for troubleshooting
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      }
+    }
+  }
+}
+
+
 pipeline {
   agent any
 
-  environment {
-    // Where to stash Maven’s local repo so that each run is fast
-    MAVEN_LOCAL_REPO = "${env.WORKSPACE}/.m2/repository"
-  }
-
   stages {
-    stage('Checkout App') {
+    stage('Checkout') {
       steps {
-        // Clone the Flask blog application
+        // Clone the repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
-
-    stage('Build & Deploy App') {
+    stage('Build & Deploy') {
       steps {
+        // Navigate into the Flask blog directory
         dir('Python/Flask_Blog/04-Database') {
+          // Tear down any existing containers & volumes, then rebuild from scratch
           sh '''
             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
@@ -24,87 +31,14 @@ pipeline {
         }
       }
     }
+  }
 
-    stage('Checkout Test­Cases') {
-      steps {
-        // Pull your Selenium test-cases into a subdirectory
-        dir('selenium_testcases') {
-          deleteDir()                      // ensure a clean checkout
-          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-        }
-      }
-    }
-
-    stage('Run Selenium Tests') {
-      steps {
-        dir('selenium_testcases') {
-          script {
-            // Make sure the m2 repo dir exists
-            sh "mkdir -p ${MAVEN_LOCAL_REPO}"
-
-            // invoke Maven inside the Chrome-capable container
-            sh """
-              docker run --rm \
-                -v ${MAVEN_LOCAL_REPO}:/root/.m2/repository \
-                -v \$(pwd):/app \
-                -w /app \
-                --shm-size=1g \
-                markhobson/maven-chrome:latest \
-                mvn -B clean test
-            """
-          }
-        }
-      }
-      post {
-        always {
-          // Publish JUnit test reports
-          junit 'selenium_testcases/target/surefire-reports/*.xml'
-        }
+  post {
+    always {
+      // Print out the status of the running containers for debugging
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
     }
   }
-
-//   post {
-//     always {
-//       // dump container status for troubleshooting
-//       dir('Python/Flask_Blog/04-Database') {
-//         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-//       }
-//     }
-//   }
-// }
-
-
-// pipeline {
-//   agent any
-
-//   stages {
-//     stage('Checkout') {
-//       steps {
-//         // Clone the repo
-//         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-//       }
-//     }
-//     stage('Build & Deploy') {
-//       steps {
-//         // Navigate into the Flask blog directory
-//         dir('Python/Flask_Blog/04-Database') {
-//           // Tear down any existing containers & volumes, then rebuild from scratch
-//           sh '''
-//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-//             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-//           '''
-//         }
-//       }
-//     }
-//   }
-
-//   post {
-//     always {
-//       // Print out the status of the running containers for debugging
-//       dir('Python/Flask_Blog/04-Database') {
-//         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-//       }
-//     }
-//   }
-// }
+}
