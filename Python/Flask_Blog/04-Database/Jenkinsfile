@@ -2,22 +2,17 @@ pipeline {
   agent any
 
   environment {
-    // ensure Maven downloads use TLS1.2
     MAVEN_OPTS = '-Dhttps.protocols=TLSv1.2'
-    // path to your custom local Maven repo (optional)
-    MVN_REPO = "${env.WORKSPACE}/.m2/repository"
+    MVN_REPO    = "${env.WORKSPACE}/.m2/repository"
   }
 
   stages {
     stage('Checkout & Deploy Flask App') {
       steps {
-        // Clone the Flask blog code
         dir('app') {
           deleteDir()
           git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
         }
-
-        // Build & run the Flask blog via docker-compose
         dir('app/Python/Flask_Blog/04-Database') {
           sh '''
             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
@@ -29,10 +24,7 @@ pipeline {
 
     stage('Checkout Selenium Tests') {
       steps {
-        // Remove any stale test folder, ensure permissions are correct
         dir('selenium_testcases') {
-          // if files owned by root, chown them back
-          sh 'sudo chown -R jenkins:jenkins . || true'
           deleteDir()
           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
         }
@@ -41,19 +33,24 @@ pipeline {
 
     stage('Run Selenium Tests') {
       steps {
-        // Run tests inside a container that has both Maven & Chrome
-        withDockerContainer(
-          image: 'markhobson/maven-chrome:latest',
-          args: "--shm-size=1g -v ${MVN_REPO}:/root/.m2/repository"
-        ) {
-          dir('selenium_testcases') {
-            sh 'mvn -B -Dmaven.repo.local=${MVN_REPO} clean test'
+        script {
+          // capture host Jenkins UID/GID
+          def uid = sh(script: 'id -u', returnStdout: true).trim()
+          def gid = sh(script: 'id -g', returnStdout: true).trim()
+
+          withDockerContainer(
+            image: 'markhobson/maven-chrome:latest',
+            args: "--user ${uid}:${gid} --shm-size=1g -v ${MVN_REPO}:/root/.m2/repository"
+          ) {
+            dir('selenium_testcases') {
+              // this mvn run will generate target/ under your Jenkins UID
+              sh 'mvn -B -Dmaven.repo.local=${MVN_REPO} clean test'
+            }
           }
         }
       }
       post {
         always {
-          // Publish JUnit results
           junit 'selenium_testcases/target/surefire-reports/*.xml'
         }
       }
@@ -62,7 +59,6 @@ pipeline {
 
   post {
     always {
-      // Show Flask blog container status for debugging
       dir('app/Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
