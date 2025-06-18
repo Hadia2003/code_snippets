@@ -1,73 +1,59 @@
 pipeline {
   agent any
 
-  // Don’t do the default checkout — we’ll do it ourselves below
-  options {
-    skipDefaultCheckout()
-  }
-
-  environment {
-    MVN_REPO = "${env.WORKSPACE}/.m2/repository"
-  }
-
   stages {
-    stage('Checkout Flask App') {
+    stage('Clone Flask App') {
       steps {
-        script {
-          // clean up any stray root-owned files
-          sh "chmod -R u+rwX ${env.WORKSPACE}/app || true"
+        git branch: 'master', url: 'https://github.com/Hadia2003/code_snippets.git'
+      }
+    }
+
+    stage('Clean Existing Containers') {
+      steps {
+        dir('Python/Flask_Blog/04-Database') {
+          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml down --remove-orphans -v'
         }
-        dir('app') {
-          deleteDir()
-          git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
+        // in case any stray containers still exist
+        sh '''
+          docker rm -f flaskblog_ci_web      || true
+          docker rm -f flaskblog_ci_db       || true
+        '''
+      }
+    }
+
+    stage('Build and Start Compose Stack') {
+      steps {
+        dir('Python/Flask_Blog/04-Database') {
+          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate'
         }
       }
     }
 
-    stage('Build & Deploy Flask App') {
+    stage('Wait for App to Start') {
       steps {
-        dir('app/Python/Flask_Blog/04-Database') {
-          sh '''
-            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-          '''
-        }
+        echo 'Waiting 60 seconds for Flask app to come up...'
+        sh 'sleep 60'
       }
     }
 
-    stage('Checkout Selenium Tests') {
+    stage('Clone Selenium Test Suite') {
       steps {
-        script {
-          sh "chmod -R u+rwX ${env.WORKSPACE}/selenium_testcases || true"
-        }
         dir('selenium_testcases') {
           deleteDir()
-          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+          git branch: 'main', url: 'https://github.com/Hadia2003/selenium_testcases.git'
         }
       }
     }
 
     stage('Run Selenium Tests') {
       steps {
-        script {
-          // capture Jenkins user IDs
-          def uid = sh(script: 'id -u', returnStdout: true).trim()
-          def gid = sh(script: 'id -g', returnStdout: true).trim()
-
-          // run Maven+Chrome as Jenkins user so 'target/' is owned correctly
-          docker.image('markhobson/maven-chrome:latest').inside(
-            "--user ${uid}:${gid} --shm-size=1g -v ${MVN_REPO}:/root/.m2/repository"
-          ) {
-            dir('selenium_testcases') {
-              sh 'mvn -B -Dmaven.repo.local=${MVN_REPO} clean test'
-            }
+        dir('selenium_testcases') {
+          script {
+            docker.image('markhobson/maven-chrome:latest')
+              .inside('-u root --network host --shm-size=2g') {
+                sh 'mvn -B clean test'
+              }
           }
-        }
-      }
-      post {
-        always {
-          // publish JUnit reports if they exist
-          junit allowEmptyResults: true, testResults: 'selenium_testcases/target/surefire-reports/*.xml'
         }
       }
     }
@@ -75,9 +61,14 @@ pipeline {
 
   post {
     always {
-      // never fail here if the compose file is gone
+      // publish your Selenium JUnit XML reports
+      junit testResults: 'selenium_testcases/target/surefire-reports/*.xml',
+            allowEmptyResults: true,
+            keepLongStdio: false
+
+      // and show the status of your Flask containers
       script {
-        dir('app/Python/Flask_Blog/04-Database') {
+        dir('Python/Flask_Blog/04-Database') {
           sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps || true'
         }
       }
