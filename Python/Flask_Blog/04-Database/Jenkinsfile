@@ -21,6 +21,22 @@ pipeline {
         }
       }
     }
+    stage('Test') {
+      steps {
+        // Clone your Selenium test repo
+        git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+
+        // Run tests inside a container with JDK, Maven, Chrome & ChromeDriver
+        docker.image('markhobson/maven-chrome:latest').inside {
+          // Change to the directory if your pom.xml lives in a subfolder:
+          //dir('some/subdir') {
+            // Run Maven tests
+            sh 'mvn clean test -B'
+          //}
+        }
+      }
+    }
+  }
   }
 
   post {
