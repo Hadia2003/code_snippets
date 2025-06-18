@@ -3,9 +3,9 @@ pipeline {
 
     environment {
         // --- UPDATE THESE ---
-        APP_REPO      = 'https://github.com/yourusername/flaskblog_ci.git'
-        APP_BRANCH    = 'main'
-        TEST_REPO     = 'https://github.com/yourusername/flaskblog-selenium-tests.git'
+        APP_REPO      = 'https://github.com/Hadia2003/code_snippets.git'
+        APP_BRANCH    = 'master'
+        TEST_REPO     = 'https://github.com/Hadia2003/selenium_testcases.git'
         TEST_BRANCH   = 'main'
         COMPOSE_FILE  = 'docker-compose.yml'
         PROJECT_NAME  = 'flaskblog_ci'
