@@ -16,15 +16,15 @@ pipeline {
     stages {
         stage('Checkout Application') {
             steps {
-                git branch: APP_BRANCH, url: APP_REPO
+                git branch: "${APP_BRANCH}", url: "${APP_REPO}"
             }
         }
 
         stage('Clean Existing Containers') {
             steps {
-                // Tear down any old compose stack
-                sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down --remove-orphans"
-                // Force-remove any stray containers
+                // tear down any old compose stack
+                sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down --remove-orphans"
+                // force-remove stray containers by name
                 sh """
                   docker rm -f ${PROJECT_NAME}_web || true
                   docker rm -f ${PROJECT_NAME}_db  || true
@@ -34,7 +34,7 @@ pipeline {
 
         stage('Build & Deploy') {
             steps {
-                sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} up -d --build"
+                sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} up -d --build"
             }
         }
 
@@ -48,7 +48,7 @@ pipeline {
         stage('Checkout Selenium Tests') {
             steps {
                 dir('selenium-tests') {
-                    git branch: TEST_BRANCH, url: TEST_REPO
+                    git branch: "${TEST_BRANCH}", url: "${TEST_REPO}"
                 }
             }
         }
@@ -56,12 +56,12 @@ pipeline {
         stage('Run Selenium Tests') {
             steps {
                 script {
-                    docker.image(PYTHON_IMAGE)
+                    docker.image("${PYTHON_IMAGE}")
                           .inside('--network host --shm-size=2g') {
-                              // install your test deps
+                              // install test dependencies
                               sh 'pip install -r requirements.txt'
-                              // run pytest and generate JUnit XML
-                              sh 'pytest --junitxml=reports/results.xml'
+                              // ensure report dir exists then run pytest
+                              sh 'mkdir -p reports && pytest --junitxml=reports/results.xml'
                           }
                 }
             }
@@ -70,10 +70,10 @@ pipeline {
 
     post {
         always {
-            // Publish test results (even if there are no tests)
+            // publish test results (even if none found)
             junit testResults: 'selenium-tests/reports/*.xml', allowEmptyResults: true
-            // Optional: tear down your compose stack
-            sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down"
+            // tear down the compose stack
+            sh "docker-compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down"
         }
     }
 }
