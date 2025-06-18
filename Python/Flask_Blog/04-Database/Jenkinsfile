@@ -1,18 +1,31 @@
 pipeline {
   agent any
 
+  // Don’t do the default checkout — we’ll do it ourselves below
+  options {
+    skipDefaultCheckout()
+  }
+
   environment {
-    MAVEN_OPTS = '-Dhttps.protocols=TLSv1.2'
-    MVN_REPO    = "${env.WORKSPACE}/.m2/repository"
+    MVN_REPO = "${env.WORKSPACE}/.m2/repository"
   }
 
   stages {
-    stage('Checkout & Deploy Flask App') {
+    stage('Checkout Flask App') {
       steps {
+        script {
+          // clean up any stray root-owned files
+          sh "chmod -R u+rwX ${env.WORKSPACE}/app || true"
+        }
         dir('app') {
           deleteDir()
           git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
         }
+      }
+    }
+
+    stage('Build & Deploy Flask App') {
+      steps {
         dir('app/Python/Flask_Blog/04-Database') {
           sh '''
             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
@@ -24,6 +37,9 @@ pipeline {
 
     stage('Checkout Selenium Tests') {
       steps {
+        script {
+          sh "chmod -R u+rwX ${env.WORKSPACE}/selenium_testcases || true"
+        }
         dir('selenium_testcases') {
           deleteDir()
           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
@@ -34,16 +50,15 @@ pipeline {
     stage('Run Selenium Tests') {
       steps {
         script {
-          // capture host Jenkins UID/GID
+          // capture Jenkins user IDs
           def uid = sh(script: 'id -u', returnStdout: true).trim()
           def gid = sh(script: 'id -g', returnStdout: true).trim()
 
-          withDockerContainer(
-            image: 'markhobson/maven-chrome:latest',
-            args: "--user ${uid}:${gid} --shm-size=1g -v ${MVN_REPO}:/root/.m2/repository"
+          // run Maven+Chrome as Jenkins user so 'target/' is owned correctly
+          docker.image('markhobson/maven-chrome:latest').inside(
+            "--user ${uid}:${gid} --shm-size=1g -v ${MVN_REPO}:/root/.m2/repository"
           ) {
             dir('selenium_testcases') {
-              // this mvn run will generate target/ under your Jenkins UID
               sh 'mvn -B -Dmaven.repo.local=${MVN_REPO} clean test'
             }
           }
@@ -51,7 +66,8 @@ pipeline {
       }
       post {
         always {
-          junit 'selenium_testcases/target/surefire-reports/*.xml'
+          // publish JUnit reports if they exist
+          junit allowEmptyResults: true, testResults: 'selenium_testcases/target/surefire-reports/*.xml'
         }
       }
     }
@@ -59,12 +75,16 @@ pipeline {
 
   post {
     always {
-      dir('app/Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      // never fail here if the compose file is gone
+      script {
+        dir('app/Python/Flask_Blog/04-Database') {
+          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps || true'
+        }
       }
     }
   }
 }
+
 
 // pipeline {
 //   agent any
