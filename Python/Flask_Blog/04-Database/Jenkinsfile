@@ -23,18 +23,24 @@ pipeline {
     }
 
     stage('Test') {
+      // Use the Maven-Chrome image as the agent for this stage
+      agent {
+        docker {
+          image 'markhobson/maven-chrome:latest'
+          // you can add extra args here, e.g. '--user root' or networking flags
+        }
+      }
       steps {
         // Clone your Selenium test cases
-        dir('selenium_testcases') {
-          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-        }
+        git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
 
-        // Run tests inside a container with JDK, Maven, Chrome & ChromeDriver
-        docker.image('markhobson/maven-chrome:latest').inside {
-          dir('selenium_testcases') {
-            // Adjust this if you need headless or extra flags
-            sh 'mvn clean test -B'
-          }
+        // Run Maven tests
+        sh 'mvn clean test -B'
+      }
+      post {
+        always {
+          // Archive JUnit reports
+          junit 'target/surefire-reports/*.xml'
         }
       }
     }
@@ -46,9 +52,6 @@ pipeline {
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
-      // (Optional) Archive JUnit reports if you want:
-      // junit 'selenium_testcases/target/surefire-reports/*.xml'
     }
   }
 }
-
