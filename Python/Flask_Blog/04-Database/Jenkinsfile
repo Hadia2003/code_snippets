@@ -1,75 +1,83 @@
 pipeline {
-  agent any
+    agent any
 
-  stages {
-    stage('Checkout Flask App') {
-      steps {
-        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-      }
+    environment {
+        // --- UPDATE THESE ---
+        APP_REPO      = 'https://github.com/yourusername/flaskblog_ci.git'
+        APP_BRANCH    = 'main'
+        TEST_REPO     = 'https://github.com/yourusername/flaskblog-selenium-tests.git'
+        TEST_BRANCH   = 'main'
+        COMPOSE_FILE  = 'docker-compose.yml'
+        PROJECT_NAME  = 'flaskblog_ci'
+        PYTHON_IMAGE  = 'python:3.9-slim'
+        // --------------------
     }
 
-    stage('Build & Deploy Flask App') {
-      steps {
-        dir('Python/Flask_Blog/04-Database') {
-          sh '''
-            docker-compose -p flaskblog_ci -f docker-compose.yml down -v --remove-orphans || true
-            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-          '''
-        }
-      }
-    }
-
-    stage('Wait for Flask to be Ready') {
-      steps {
-        echo 'Waiting 60 seconds for Flask app to start…'
-        sh 'sleep 60'
-      }
-    }
-
-    stage('Checkout Selenium Test Suite') {
-      steps {
-        dir('selenium_testcases') {
-          // wipe out anything left over
-          deleteDir()
-
-          // clone your test repo
-          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-        }
-      }
-    }
-
-    stage('Run Selenium Tests') {
-      steps {
-        dir('selenium_testcases') {
-          script {
-            // run container as the Jenkins UNIX user so files are writable/deletable
-            def uid = sh(script: 'id -u', returnStdout: true).trim()
-            def gid = sh(script: 'id -g', returnStdout: true).trim()
-
-            docker.image('markhobson/maven-chrome:latest')
-                  .inside("-u ${uid}:${gid} --network host --shm-size=2g") {
-              sh 'mvn -B clean test'
+    stages {
+        stage('Checkout Application') {
+            steps {
+                git branch: APP_BRANCH, url: APP_REPO
             }
-          }
         }
-      }
-    }
-  }
 
-  post {
-    always {
-      // publish your Selenium JUnit reports
-      junit testResults: 'selenium_testcases/target/surefire-reports/*.xml',
-            allowEmptyResults: true,
-            keepLongStdio: false
+        stage('Clean Existing Containers') {
+            steps {
+                // Tear down any old compose stack
+                sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down --remove-orphans"
+                // Force-remove any stray containers
+                sh """
+                  docker rm -f ${PROJECT_NAME}_web || true
+                  docker rm -f ${PROJECT_NAME}_db  || true
+                """
+            }
+        }
 
-      // show container status for debugging
-      dir('Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-      }
+        stage('Build & Deploy') {
+            steps {
+                sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} up -d --build"
+            }
+        }
+
+        stage('Wait for Flask to Start') {
+            steps {
+                echo 'Waiting 60 seconds for the Flask app to become healthy…'
+                sh 'sleep 60'
+            }
+        }
+
+        stage('Checkout Selenium Tests') {
+            steps {
+                dir('selenium-tests') {
+                    git branch: TEST_BRANCH, url: TEST_REPO
+                }
+            }
+        }
+
+        stage('Run Selenium Tests') {
+            steps {
+                script {
+                    docker.image(PYTHON_IMAGE)
+                          .inside('--network host --shm-size=2g') {
+                              // install your test deps
+                              sh 'pip install -r requirements.txt'
+                              // run pytest and generate JUnit XML
+                              sh 'pytest --junitxml=reports/results.xml'
+                          }
+                }
+            }
+        }
     }
-  }
+
+    post {
+        always {
+            // Publish test results (even if there are no tests)
+            junit testResults: 'selenium-tests/reports/*.xml', allowEmptyResults: true
+            // Optional: tear down your compose stack
+            sh "docker compose -p ${PROJECT_NAME} -f ${COMPOSE_FILE} down"
+        }
+    }
 }
+
 
 
 // pipeline {
