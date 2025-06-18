@@ -1,46 +1,36 @@
 pipeline {
   agent any
 
+  environment {
+    // Where to stash Maven’s local repo so that each run is fast
+    MAVEN_LOCAL_REPO = "${env.WORKSPACE}/.m2/repository"
+  }
+
   stages {
-    stage('Clone Flask App') {
+    stage('Checkout App') {
       steps {
-        git branch: 'master', url: 'https://github.com/Hadia2003/code_snippets.git'
+        // Clone the Flask blog application
+        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
 
-    stage('Clean Existing Containers') {
+    stage('Build & Deploy App') {
       steps {
         dir('Python/Flask_Blog/04-Database') {
-          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml down --remove-orphans -v'
-        }
-        // in case any stray containers still exist
-        sh '''
-          docker rm -f flaskblog_ci_web      || true
-          docker rm -f flaskblog_ci_db       || true
-        '''
-      }
-    }
-
-    stage('Build and Start Compose Stack') {
-      steps {
-        dir('Python/Flask_Blog/04-Database') {
-          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate'
+          sh '''
+            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
+          '''
         }
       }
     }
 
-    stage('Wait for App to Start') {
+    stage('Checkout Test­Cases') {
       steps {
-        echo 'Waiting 60 seconds for Flask app to come up...'
-        sh 'sleep 60'
-      }
-    }
-
-    stage('Clone Selenium Test Suite') {
-      steps {
+        // Pull your Selenium test-cases into a subdirectory
         dir('selenium_testcases') {
-          deleteDir()
-          git branch: 'main', url: 'https://github.com/Hadia2003/selenium_testcases.git'
+          deleteDir()                      // ensure a clean checkout
+          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
         }
       }
     }
@@ -49,99 +39,30 @@ pipeline {
       steps {
         dir('selenium_testcases') {
           script {
-            docker.image('markhobson/maven-chrome:latest')
-              .inside('-u root --network host --shm-size=2g') {
-                sh 'mvn -B clean test'
-              }
+            // Make sure the m2 repo dir exists
+            sh "mkdir -p ${MAVEN_LOCAL_REPO}"
+
+            // invoke Maven inside the Chrome-capable container
+            sh """
+              docker run --rm \
+                -v ${MAVEN_LOCAL_REPO}:/root/.m2/repository \
+                -v \$(pwd):/app \
+                -w /app \
+                --shm-size=1g \
+                markhobson/maven-chrome:latest \
+                mvn -B clean test
+            """
           }
         }
       }
-    }
-  }
-
-  post {
-    always {
-      // publish your Selenium JUnit XML reports
-      junit testResults: 'selenium_testcases/target/surefire-reports/*.xml',
-            allowEmptyResults: true,
-            keepLongStdio: false
-
-      // and show the status of your Flask containers
-      script {
-        dir('Python/Flask_Blog/04-Database') {
-          sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps || true'
+      post {
+        always {
+          // Publish JUnit test reports
+          junit 'selenium_testcases/target/surefire-reports/*.xml'
         }
       }
     }
   }
-}
-
-
-// pipeline {
-//   agent any
-
-//   environment {
-//     // Where to stash Maven’s local repo so that each run is fast
-//     MAVEN_LOCAL_REPO = "${env.WORKSPACE}/.m2/repository"
-//   }
-
-//   stages {
-//     stage('Checkout App') {
-//       steps {
-//         // Clone the Flask blog application
-//         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-//       }
-//     }
-
-//     stage('Build & Deploy App') {
-//       steps {
-//         dir('Python/Flask_Blog/04-Database') {
-//           sh '''
-//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-//             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-//           '''
-//         }
-//       }
-//     }
-
-//     stage('Checkout Test­Cases') {
-//       steps {
-//         // Pull your Selenium test-cases into a subdirectory
-//         dir('selenium_testcases') {
-//           deleteDir()                      // ensure a clean checkout
-//           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-//         }
-//       }
-//     }
-
-//     stage('Run Selenium Tests') {
-//       steps {
-//         dir('selenium_testcases') {
-//           script {
-//             // Make sure the m2 repo dir exists
-//             sh "mkdir -p ${MAVEN_LOCAL_REPO}"
-
-//             // invoke Maven inside the Chrome-capable container
-//             sh """
-//               docker run --rm \
-//                 -v ${MAVEN_LOCAL_REPO}:/root/.m2/repository \
-//                 -v \$(pwd):/app \
-//                 -w /app \
-//                 --shm-size=1g \
-//                 markhobson/maven-chrome:latest \
-//                 mvn -B clean test
-//             """
-//           }
-//         }
-//       }
-//       post {
-//         always {
-//           // Publish JUnit test reports
-//           junit 'selenium_testcases/target/surefire-reports/*.xml'
-//         }
-//       }
-//     }
-//   }
 
 //   post {
 //     always {
