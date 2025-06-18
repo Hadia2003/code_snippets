@@ -29,9 +29,7 @@ pipeline {
     stage('Checkout Selenium Test Suite') {
       steps {
         dir('selenium_testcases') {
-          // wipe out anything left over from previous runs
-          deleteDir()
-          // clone your test repo
+          deleteDir()   // wipe out any leftovers
           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
         }
       }
@@ -41,9 +39,12 @@ pipeline {
       steps {
         dir('selenium_testcases') {
           script {
-            // run as the same UID as Jenkins, not root
+            // grab the Jenkins user's UID/GID so the container never leaves root-owned files
+            def uid = sh(script: 'id -u', returnStdout: true).trim()
+            def gid = sh(script: 'id -g', returnStdout: true).trim()
+
             docker.image('markhobson/maven-chrome:latest')
-                  .inside('--network host --shm-size=2g') {
+                  .inside("-u ${uid}:${gid} --network host --shm-size=2g") {
               sh 'mvn -B clean test'
             }
           }
@@ -54,20 +55,21 @@ pipeline {
 
   post {
     always {
-      // pick up Surefire XML reports
+      // collect JUnit reports (Surefire)
       junit(
         testResults: 'selenium_testcases/target/surefire-reports/*.xml',
         allowEmptyResults: true,
         keepLongStdio: false
       )
 
-      // show container status for debug
+      // show Flask container status for debugging
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps || true'
       }
     }
   }
 }
+
 
 
 
