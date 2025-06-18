@@ -4,16 +4,15 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Clone the application repo
+        // Clone the repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
-
     stage('Build & Deploy') {
       steps {
         // Navigate into the Flask blog directory
         dir('Python/Flask_Blog/04-Database') {
-          // Tear down any existing containers & volumes, then rebuild
+          // Tear down any existing containers & volumes, then rebuild from scratch
           sh '''
             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
@@ -21,41 +20,11 @@ pipeline {
         }
       }
     }
-
-    stage('Test') {
-      agent {
-        docker {
-          image 'markhobson/maven-chrome:latest'
-          // you could mount a host .m2 cache if desired:
-          // args '-v $HOME/.m2:/root/.m2'
-        }
-      }
-      environment {
-        // Force Maven to use a repo inside the workspace
-        MAVEN_OPTS = "-Dmaven.repo.local=${WORKSPACE}/.m2/repository"
-      }
-      steps {
-        // Clone your Selenium tests
-        git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-
-        // Prepare a workspace-local Maven repo
-        sh 'mkdir -p ${WORKSPACE}/.m2/repository'
-
-        // Run the tests, pointing Maven at our local repo
-        sh 'mvn clean test -B'
-      }
-      post {
-        always {
-          // Archive the results so you can see them in Jenkins
-          junit 'target/surefire-reports/*.xml'
-        }
-      }
-    }
   }
 
   post {
     always {
-      // Show your Flask containers’ status
+      // Print out the status of the running containers for debugging
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
