@@ -1,14 +1,3 @@
-  post {
-    always {
-      // dump container status for troubleshooting
-      dir('Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-      }
-    }
-  }
-}
-
-
 pipeline {
   agent any
 
