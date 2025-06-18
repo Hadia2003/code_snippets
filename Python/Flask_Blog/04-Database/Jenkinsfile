@@ -4,10 +4,11 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Clone the repo
+        // Clone the application repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
+
     stage('Build & Deploy') {
       steps {
         // Navigate into the Flask blog directory
@@ -20,22 +21,23 @@ pipeline {
         }
       }
     }
+
     stage('Test') {
       steps {
-        // Clone your Selenium test repo
-        git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+        // Clone your Selenium test cases
+        dir('selenium_testcases') {
+          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+        }
 
         // Run tests inside a container with JDK, Maven, Chrome & ChromeDriver
         docker.image('markhobson/maven-chrome:latest').inside {
-          // Change to the directory if your pom.xml lives in a subfolder:
-          //dir('some/subdir') {
-            // Run Maven tests
+          dir('selenium_testcases') {
+            // Adjust this if you need headless or extra flags
             sh 'mvn clean test -B'
-          //}
+          }
         }
       }
     }
-  }
   }
 
   post {
@@ -44,5 +46,9 @@ pipeline {
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
+      // (Optional) Archive JUnit reports if you want:
+      // junit 'selenium_testcases/target/surefire-reports/*.xml'
     }
   }
+}
+
