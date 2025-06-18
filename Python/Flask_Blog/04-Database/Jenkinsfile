@@ -4,7 +4,6 @@ pipeline {
   stages {
     stage('Checkout Flask App') {
       steps {
-        // your existing repo
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
       }
     }
@@ -30,7 +29,10 @@ pipeline {
     stage('Checkout Selenium Test Suite') {
       steps {
         dir('selenium_testcases') {
-          deleteDir()  // clean out any old root-owned files
+          // wipe out anything left over
+          deleteDir()
+
+          // clone your test repo
           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
         }
       }
@@ -40,13 +42,12 @@ pipeline {
       steps {
         dir('selenium_testcases') {
           script {
-            // grab the host Jenkins user's UID/GID so the container writes with correct permissions
+            // run container as the Jenkins UNIX user so files are writable/deletable
             def uid = sh(script: 'id -u', returnStdout: true).trim()
             def gid = sh(script: 'id -g', returnStdout: true).trim()
 
             docker.image('markhobson/maven-chrome:latest')
                   .inside("-u ${uid}:${gid} --network host --shm-size=2g") {
-              // run your Maven tests
               sh 'mvn -B clean test'
             }
           }
@@ -57,18 +58,19 @@ pipeline {
 
   post {
     always {
-      // publish test results (allowEmptyResults avoids "no such file" errors)
+      // publish your Selenium JUnit reports
       junit testResults: 'selenium_testcases/target/surefire-reports/*.xml',
             allowEmptyResults: true,
             keepLongStdio: false
 
-      // show your Flask container status for debugging
+      // show container status for debugging
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
     }
   }
 }
+
 
 // pipeline {
 //   agent any
