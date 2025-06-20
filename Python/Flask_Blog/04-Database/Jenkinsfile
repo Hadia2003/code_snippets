@@ -1,86 +1,47 @@
-pipeline {
-  agent any
-
-  stages {
-    stage('Checkout & Deploy Flask App') {
-      steps {
-        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-        dir('Python/Flask_Blog/04-Database') {
-          sh '''
-            docker-compose -p flaskblog_ci -f docker-compose.yml down -v --remove-orphans || true
-            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-          '''
-        }
-      }
-    }
-
-    stage('Wait for Flask to Start') {
-      steps {
-        echo 'Waiting 60s for the app to come online…'
-        sh 'sleep 60'
-      }
-    }
-
-    stage('Checkout Selenium Test Suite') {
-      steps {
-        dir('selenium_testcases') {
-          deleteDir()
-          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-        }
-      }
-    }
-
-    stage('Build Selenium Test Image') {
-      steps {
-        dir('selenium_testcases') {
-          sh 'docker build -t selenium-test .'
-        }
-      }
-    }
-
-    stage('Run Selenium Tests') {
-      steps {
-        dir('selenium_testcases') {
-          sh 'docker run --network host --rm selenium-test'
-        }
-      }
-    }
-  }
-
-  post {
-    always {
-      // 1) Archive JUnit results
-      junit 'selenium_testcases/target/surefire-reports/*.xml'
-
-      // 2) Print Docker Compose status
-      dir('Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-      }
-    }
-  }
-}
-
-
-
 // pipeline {
 //   agent any
 
 //   stages {
-//     stage('Checkout') {
+//     stage('Checkout & Deploy Flask App') {
 //       steps {
-//         // Clone the repo
 //         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-//       }
-//     }
-//     stage('Build & Deploy') {
-//       steps {
-//         // Navigate into the Flask blog directory
 //         dir('Python/Flask_Blog/04-Database') {
-//           // Tear down any existing containers & volumes, then rebuild from scratch
 //           sh '''
-//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v --remove-orphans || true
 //             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
 //           '''
+//         }
+//       }
+//     }
+
+//     stage('Wait for Flask to Start') {
+//       steps {
+//         echo 'Waiting 60s for the app to come online…'
+//         sh 'sleep 60'
+//       }
+//     }
+
+//     stage('Checkout Selenium Test Suite') {
+//       steps {
+//         dir('selenium_testcases') {
+//           deleteDir()
+//           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+//         }
+//       }
+//     }
+
+//     stage('Build Selenium Test Image') {
+//       steps {
+//         dir('selenium_testcases') {
+//           sh 'docker build -t selenium-test .'
+//         }
+//       }
+//     }
+
+//     stage('Run Selenium Tests') {
+//       steps {
+//         dir('selenium_testcases') {
+//           sh 'docker run --network host --rm selenium-test'
 //         }
 //       }
 //     }
@@ -88,10 +49,49 @@ pipeline {
 
 //   post {
 //     always {
-//       // Print out the status of the running containers for debugging
+//       // 1) Archive JUnit results
+//       junit 'selenium_testcases/target/surefire-reports/*.xml'
+
+//       // 2) Print Docker Compose status
 //       dir('Python/Flask_Blog/04-Database') {
 //         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
 //       }
 //     }
 //   }
 // }
+
+
+
+pipeline {
+  agent any
+
+  stages {
+    stage('Checkout') {
+      steps {
+        // Clone the repo
+        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
+      }
+    }
+    stage('Build & Deploy') {
+      steps {
+        // Navigate into the Flask blog directory
+        dir('Python/Flask_Blog/04-Database') {
+          // Tear down any existing containers & volumes, then rebuild from scratch
+          sh '''
+            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      // Print out the status of the running containers for debugging
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      }
+    }
+  }
+}
