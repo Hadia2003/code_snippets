@@ -4,10 +4,7 @@ pipeline {
   stages {
     stage('Checkout & Deploy Flask App') {
       steps {
-        // 1) Clone your Flask blog
         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-        
-        // 2) Build & bring up via Docker Compose
         dir('Python/Flask_Blog/04-Database') {
           sh '''
             docker-compose -p flaskblog_ci -f docker-compose.yml down -v --remove-orphans || true
@@ -27,9 +24,7 @@ pipeline {
     stage('Checkout Selenium Test Suite') {
       steps {
         dir('selenium_testcases') {
-          // wipe out any old workspace
           deleteDir()
-          // clone the test repo
           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
         }
       }
@@ -38,7 +33,6 @@ pipeline {
     stage('Build Selenium Test Image') {
       steps {
         dir('selenium_testcases') {
-          // assumes you have a Dockerfile at the root of selenium_testcases/
           sh 'docker build -t selenium-test .'
         }
       }
@@ -46,31 +40,26 @@ pipeline {
 
     stage('Run Selenium Tests') {
       steps {
-        // run tests against localhost:5000 (Flask) using host network
-        sh '''
-          docker run --rm \
-            --network host \
-            --shm-size=2g \
-            selenium-test
-        '''
+        dir('selenium_testcases') {
+          sh 'docker run --network host --rm selenium-test'
+        }
       }
     }
   }
 
   post {
     always {
-      // 1) Publish your Maven‐Surefire JUnit XMLs
+      // 1) Archive JUnit results
       junit 'selenium_testcases/target/surefire-reports/*.xml'
 
-      // 2) Show your Flask container status for debug
+      // 2) Print Docker Compose status
       dir('Python/Flask_Blog/04-Database') {
         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
       }
-
-      echo 'Pipeline finished.'
     }
   }
 }
+
 
 
 // pipeline {
