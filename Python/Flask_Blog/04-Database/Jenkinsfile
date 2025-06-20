@@ -1,58 +1,97 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Checkout & Deploy Flask App') {
+      steps {
+        // 1) Clone your Flask blog
+        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
+        
+        // 2) Build & bring up via Docker Compose
+        dir('Python/Flask_Blog/04-Database') {
+          sh '''
+            docker-compose -p flaskblog_ci -f docker-compose.yml down -v --remove-orphans || true
+            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
+          '''
+        }
+      }
+    }
+
+    stage('Wait for Flask to Start') {
+      steps {
+        echo 'Waiting 60s for the app to come online…'
+        sh 'sleep 60'
+      }
+    }
+
+    stage('Checkout Selenium Test Suite') {
+      steps {
+        dir('selenium_testcases') {
+          // wipe out any old workspace
+          deleteDir()
+          // clone the test repo
+          git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
+        }
+      }
+    }
+
+    stage('Build Selenium Test Image') {
+      steps {
+        dir('selenium_testcases') {
+          // assumes you have a Dockerfile at the root of selenium_testcases/
+          sh 'docker build -t selenium-test .'
+        }
+      }
+    }
+
+    stage('Run Selenium Tests') {
+      steps {
+        // run tests against localhost:5000 (Flask) using host network
+        sh '''
+          docker run --rm \
+            --network host \
+            --shm-size=2g \
+            selenium-test
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      // 1) Publish your Maven‐Surefire JUnit XMLs
+      junit 'selenium_testcases/target/surefire-reports/*.xml'
+
+      // 2) Show your Flask container status for debug
+      dir('Python/Flask_Blog/04-Database') {
+        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
+      }
+
+      echo 'Pipeline finished.'
+    }
+  }
+}
+
+
 // pipeline {
 //   agent any
 
-//   // Make sure you’ve defined these tool names in Jenkins
-//   tools {
-//     jdk    'OpenJDK11'    // your JDK 11 installation
-//     maven  'Maven3'       // your Maven installation
-//   }
-
-//   environment {
-//     COMPOSE_PROJECT = 'flaskblog_ci'
-//     COMPOSE_FILE    = 'docker-compose.yml'
-//   }
-
 //   stages {
-//     stage('Checkout App') {
+//     stage('Checkout') {
 //       steps {
-//         // Clone the Flask app repository
+//         // Clone the repo
 //         git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
 //       }
 //     }
-
-//     stage('Checkout Tests') {
-//       steps {
-//         // Clone your Selenium-Java test project alongside
-//         dir('selenium_testcases') {
-//           git url: 'https://github.com/Hadia2003/selenium_testcases.git', branch: 'main'
-//         }
-//       }
-//     }
-
 //     stage('Build & Deploy') {
 //       steps {
+//         // Navigate into the Flask blog directory
 //         dir('Python/Flask_Blog/04-Database') {
-//           // Tear down existing containers, rebuild & start fresh
+//           // Tear down any existing containers & volumes, then rebuild from scratch
 //           sh '''
-//             docker-compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} down -v || true
-//             docker-compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d --build --force-recreate
+//             docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
+//             docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
 //           '''
-//         }
-//       }
-//     }
-
-//     stage('Run Selenium Tests') {
-//       steps {
-//         dir('selenium_testcases') {
-//           // Run your Maven-based Selenium tests.
-//           // WebDriverManager in code will download the matching ChromeDriver.
-//           sh 'mvn clean test'
-//         }
-//       }
-//       post {
-//         always {
-//           // Publish JUnit XML results so you get pass/fail reporting
-//           junit 'selenium_testcases/target/surefire-reports/*.xml'
 //         }
 //       }
 //     }
@@ -60,45 +99,10 @@
 
 //   post {
 //     always {
-//       echo '=== Pipeline Complete ==='
-//       // Show your running containers for a quick sanity check
+//       // Print out the status of the running containers for debugging
 //       dir('Python/Flask_Blog/04-Database') {
-//         sh "docker-compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} ps"
+//         sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
 //       }
 //     }
 //   }
 // }
-
-pipeline {
-  agent any
-
-  stages {
-    stage('Checkout') {
-      steps {
-        // Clone the repo
-        git url: 'https://github.com/Hadia2003/code_snippets.git', branch: 'master'
-      }
-    }
-    stage('Build & Deploy') {
-      steps {
-        // Navigate into the Flask blog directory
-        dir('Python/Flask_Blog/04-Database') {
-          // Tear down any existing containers & volumes, then rebuild from scratch
-          sh '''
-            docker-compose -p flaskblog_ci -f docker-compose.yml down -v || true
-            docker-compose -p flaskblog_ci -f docker-compose.yml up -d --build --force-recreate
-          '''
-        }
-      }
-    }
-  }
-
-  post {
-    always {
-      // Print out the status of the running containers for debugging
-      dir('Python/Flask_Blog/04-Database') {
-        sh 'docker-compose -p flaskblog_ci -f docker-compose.yml ps'
-      }
-    }
-  }
-}
